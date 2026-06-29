@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Achievement Tracker</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>Achievement Tracker</h1>
+        <p id="subtitle">Choose a game to inspect co-op completion.</p>
+      </div>
+      <div class="top-actions">
+        <select id="gameSelect" aria-label="Game"></select>
+        <button id="refreshPlayersBtn" type="button">Refresh Players</button>
+        <button id="adminToggle" type="button">Admin</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="overview">
+        <div class="metric">
+          <span class="metric-label">Achievements</span>
+          <strong id="achievementCount">0</strong>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Group Complete</span>
+          <strong id="completeCount">0</strong>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Players</span>
+          <strong id="playerCount">0</strong>
+        </div>
+      </section>
+
+      <section class="filters">
+        <label>
+          Search
+          <input id="searchInput" type="search" placeholder="Achievement name or description">
+        </label>
+        <label>
+          Status
+          <select id="statusFilter">
+            <option value="all">All</option>
+            <option value="missing">Missing by anyone</option>
+            <option value="complete">Complete for everyone</option>
+            <option value="none">Complete for no one</option>
+          </select>
+        </label>
+        <label>
+          Missing player
+          <select id="missingPlayerFilter">
+            <option value="all">Any player</option>
+          </select>
+        </label>
+        <div id="pluginFilters" class="plugin-filters"></div>
+      </section>
+
+      <section id="emptyState" class="empty">
+        Add a game and players from Admin, then refresh the achievement list.
+      </section>
+
+      <section id="achievementList" class="achievement-list"></section>
+    </main>
+
+    <aside id="adminPanel" class="admin-panel" aria-hidden="true">
+      <div class="admin-header">
+        <h2>Admin</h2>
+        <button id="adminClose" type="button">Close</button>
+      </div>
+      <label>
+        Secret
+        <input id="adminSecret" type="password" autocomplete="current-password" placeholder="ADMIN_SECRET">
+      </label>
+      <button id="saveAdminSecret" type="button">Save Secret</button>
+
+      <div id="adminContent" class="admin-content" hidden>
+        <form id="gameForm" class="admin-form">
+          <h3>Games</h3>
+          <input name="app_id" inputmode="numeric" placeholder="Steam app id, e.g. 218620" required>
+          <input name="name" placeholder="Display name" required>
+          <select name="plugin">
+            <option value="">No plugin</option>
+          </select>
+          <button type="submit">Save Game</button>
+        </form>
+        <div id="gameAdminList" class="admin-list"></div>
+
+        <form id="playerForm" class="admin-form">
+          <h3>Players</h3>
+          <input name="identifier" placeholder="SteamID64 or vanity name" required>
+          <input name="display_name" placeholder="Display name (optional)">
+          <button type="submit">Save Player</button>
+        </form>
+        <div id="playerAdminList" class="admin-list"></div>
+      </div>
+    </aside>
+
+    <div id="toast" class="toast" role="status"></div>
+    <script src="/app.js"></script>
+  </body>
+</html>

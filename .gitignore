@@ -1,0 +1,15 @@
+.venv/
+.idea/
+.claude/
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+data/*.sqlite3
+data/*.sqlite3-*
+data/payday2_metadata.json
+chat-initial.txt
+out.txt
+server.log
+server.out

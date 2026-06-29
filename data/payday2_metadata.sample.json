@@ -1,0 +1,8 @@
+{
+  "bigbank_2": {
+    "heist": "Big Bank",
+    "approach": "Stealth",
+    "difficulty": "Death Wish",
+    "notes": "Manual overrides win over data imported from Payday Wiki. Keys are Steam achievement API names."
+  }
+}
