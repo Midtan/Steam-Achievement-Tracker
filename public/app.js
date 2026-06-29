@@ -325,6 +325,7 @@ function renderAchievement(achievement) {
       <div class="tags">
         <span class="tag">${achievement.achieved_count}/${achievement.players.length} complete</span>
         ${achievement.hidden ? '<span class="tag">Hidden</span>' : ""}
+        <span class="tag">Key: ${escapeHtml(achievement.api_name)}</span>
         ${tagsHtml}
       </div>
     </div>
