@@ -61,6 +61,8 @@ All config lives in `.env` (auto-loaded on startup). Only `.env.example` is comm
 |---|---|---|
 | `STEAM_API_KEY` | *(required)* | Steam Web API key. Needed for schema refreshes and player lookups. |
 | `ADMIN_SECRET` | `change-me` | Secret for all write operations. The UI warns if it is still the default. |
+| `HOST` | `127.0.0.1` | Bind address. Set to `0.0.0.0` to listen on all interfaces (e.g. for Docker or LAN access). |
+| `PORT` | `8765` | Port the server listens on. |
 | `PLAYER_REFRESH_TTL_SECONDS` | `600` | How old cached player data can be before a dashboard load triggers a background refresh. |
 
 ---

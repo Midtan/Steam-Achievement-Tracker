@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from . import service
-from .config import ADMIN_SECRET, PUBLIC_DIR
+from .config import ADMIN_SECRET, HOST, PORT, PUBLIC_DIR
 from .db import init_db
 from .game_plugins import available_plugins
 from .steam import SteamError
@@ -126,7 +126,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     init_db()
-    address = ("127.0.0.1", 8765)
+    address = (HOST, PORT)
     httpd = ThreadingHTTPServer(address, Handler)
     print(f"Achievement Tracker running at http://{address[0]}:{address[1]}")
     if ADMIN_SECRET == "change-me":
