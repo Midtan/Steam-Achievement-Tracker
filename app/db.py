@@ -73,6 +73,14 @@ def init_db() -> None:
                 FOREIGN KEY(game_id) REFERENCES games(id) ON DELETE CASCADE,
                 FOREIGN KEY(player_id) REFERENCES players(id) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS plugin_kv (
+                plugin_slug TEXT NOT NULL,
+                key TEXT NOT NULL,
+                value TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (plugin_slug, key)
+            );
             """
         )
 

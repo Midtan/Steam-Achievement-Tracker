@@ -51,10 +51,13 @@
           </select>
         </label>
         <label>
-          Missing player
-          <select id="missingPlayerFilter">
-            <option value="all">Any player</option>
-          </select>
+          Missing players
+          <div class="player-multiselect" id="missingPlayerFilter">
+            <div class="pills-box" id="missingPillsBox">
+              <input type="text" id="missingPlayerSearch" placeholder="Any player" autocomplete="off">
+            </div>
+            <ul class="pill-dropdown" id="missingPlayerDropdown" role="listbox" hidden></ul>
+          </div>
         </label>
         <div id="pluginFilters" class="plugin-filters"></div>
       </section>

@@ -193,6 +193,38 @@ Metadata returned by the plugin is stored as JSON in the `achievements.metadata`
 
 Plugins can load supporting data from `data/`. Any file in `data/` is gitignored by default — copy from a `.sample.*` if one exists. Manual data can serve as an override layer on top of auto-fetched data (see the Payday 2 plugin for an example).
 
+### Plugin key-value store (`plugin_kv` table)
+
+The database includes a general-purpose `plugin_kv` table for plugins that need to persist non-achievement-specific data between runs — for example, a list fetched from an external source during schema refresh that should be available on subsequent dashboard loads without re-fetching.
+
+Schema: `(plugin_slug TEXT, key TEXT, value TEXT, updated_at TEXT)` — primary key on `(plugin_slug, key)`.
+
+```python
+from app.db import connect, utc_now
+
+# Write
+with connect() as conn:
+    conn.execute(
+        """
+        INSERT INTO plugin_kv(plugin_slug, key, value, updated_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(plugin_slug, key) DO UPDATE SET
+            value = excluded.value, updated_at = excluded.updated_at
+        """,
+        ("myplugin", "my_key", json.dumps(data), utc_now()),
+    )
+
+# Read
+with connect() as conn:
+    row = conn.execute(
+        "SELECT value FROM plugin_kv WHERE plugin_slug = ? AND key = ?",
+        ("myplugin", "my_key"),
+    ).fetchone()
+data = json.loads(row["value"]) if row else None
+```
+
+Store whatever the plugin needs during `enrich_all` (schema refresh) and read it back in `filter_config`, `fields`, or `enrich` on subsequent requests. Per-achievement data still goes into the `metadata` dict returned by `enrich_all`/`enrich`.
+
 ---
 
 ## Payday 2 Plugin
@@ -204,20 +236,27 @@ Plugins can load supporting data from `data/`. Any file in `data/` is gitignored
 
 During a schema refresh the plugin:
 
-1. Fetches the achievement list from the [Payday 2 Fandom Wiki](https://payday.fandom.com) (including sub-pages).
-2. Extracts heist names, approach (Stealth / Loud), and difficulty from the wiki descriptions.
+1. Scans each Steam achievement's display name and description for heist names from `data/payday2_heists.json` (simple substring match, case-insensitive, tolerates leading "the").
+2. Fetches approach (Stealth / Loud) and difficulty from the Payday 2 Fandom Wiki achievement descriptions.
 3. Applies manual overrides from `data/payday2_metadata.json` (wins over wiki data).
-4. Filters heist names against a whitelist in `data/payday2_heists.json`.
 
-This adds three filter fields to the dashboard: **Heist**, **Approach**, and **Difficulty**.
+This adds three filter fields to the dashboard: **Heists**, **Approach**, and **Difficulty**.
 
 ### Filter behaviour
 
 | Field | Type | Behaviour |
 |---|---|---|
-| Heist | `multi` | Achievement shown if any of its heists match the selected filter |
+| Heists | `multi` | Achievement shown if any of its heists match the selected filter; "Not heist specific" shows achievements with no heist |
 | Approach | `exact` | Exact match (Stealth or Loud) |
 | Difficulty | `inclusive` | Selecting a difficulty shows achievements at that level or below |
+
+### Heist whitelist (`data/payday2_heists.json`)
+
+Flat JSON array of heist names. The plugin matches each name as a substring of the Steam achievement text (case-insensitive, also tries without leading "the"). Update this file when new heists are added to the game.
+
+```json
+["The Big Bank", "Jewelry Store", "Crime Spree"]
+```
 
 ### Manual metadata (`data/payday2_metadata.json`)
 
@@ -226,19 +265,11 @@ Copy `data/payday2_metadata.sample.json` to `data/payday2_metadata.json`. Keys a
 ```json
 {
   "bigbank_2": {
-    "heist": ["Big Bank"],
+    "heist": ["The Big Bank"],
     "approach": "Stealth",
     "difficulty": "Death Wish"
   }
 }
-```
-
-### Heist whitelist (`data/payday2_heists.json`)
-
-A flat JSON array of known heist names. The plugin uses this to reject false-positive heist extractions. If the file is missing or empty, all extracted heist names are accepted.
-
-```json
-["Big Bank", "Jewelry Store", "Heat Street"]
 ```
 
 ---
