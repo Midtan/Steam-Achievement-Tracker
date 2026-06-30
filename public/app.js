@@ -4,6 +4,7 @@ const state = {
   currentGameId: null,
   dashboard: null,
   filters: {},
+  missingPlayers: new Set(),
   adminSecret: "",
   adminVerified: false,
 };
@@ -114,16 +115,56 @@ function renderGameSelect() {
 }
 
 function renderPlayerFilter() {
-  const select = $("#missingPlayerFilter");
-  const current = select.value;
-  select.innerHTML = '<option value="all">Any player</option>';
-  for (const player of state.players) {
-    const option = document.createElement("option");
-    option.value = String(player.id);
-    option.textContent = player.display_name;
-    select.append(option);
+  const box = $("#missingPillsBox");
+  const input = $("#missingPlayerSearch");
+
+  for (const el of [...box.children]) {
+    if (el !== input) el.remove();
   }
-  select.value = current || "all";
+
+  for (const id of state.missingPlayers) {
+    const player = state.players.find((p) => String(p.id) === id);
+    if (!player) continue;
+    const pill = document.createElement("span");
+    pill.className = "player-pill";
+    const avatarHtml = player.avatar_url ? `<img src="${escapeHtml(player.avatar_url)}" alt="">` : "";
+    pill.innerHTML = `${avatarHtml}${escapeHtml(player.display_name)}<button type="button" aria-label="Remove">×</button>`;
+    pill.querySelector("button").addEventListener("click", (e) => {
+      e.stopPropagation();
+      state.missingPlayers.delete(id);
+      renderPlayerFilter();
+      render();
+    });
+    box.insertBefore(pill, input);
+  }
+
+  input.placeholder = state.missingPlayers.size ? "" : "Any player";
+
+  const dropdown = $("#missingPlayerDropdown");
+  const query = input.value.trim().toLowerCase();
+  const unselected = state.players.filter((p) => !state.missingPlayers.has(String(p.id)));
+  const visible = query ? unselected.filter((p) => p.display_name.toLowerCase().includes(query)) : unselected;
+
+  dropdown.innerHTML = "";
+  for (const player of visible) {
+    const li = document.createElement("li");
+    li.className = "pill-option";
+    const avatarHtml = player.avatar_url
+      ? `<img src="${escapeHtml(player.avatar_url)}" alt="">`
+      : `<span class="pill-option-initials">${escapeHtml(player.display_name.slice(0, 2).toUpperCase())}</span>`;
+    li.innerHTML = `${avatarHtml}${escapeHtml(player.display_name)}`;
+    li.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      state.missingPlayers.add(String(player.id));
+      input.value = "";
+      renderPlayerFilter();
+      render();
+    });
+    dropdown.append(li);
+  }
+
+  const isFocused = document.activeElement === input;
+  dropdown.hidden = !isFocused || visible.length === 0;
 }
 
 function renderPluginOptions(plugins) {
@@ -161,23 +202,15 @@ function renderPluginFilters() {
         }
       }
     }
-    // Remove empty string from values to avoid duplicate empty option
     values.delete("");
-    const label = document.createElement("label");
-    label.textContent = field.label;
-    const select = document.createElement("select");
-    select.dataset.pluginKey = field.key;
-    select.innerHTML = `<option value="all">All ${field.label.toLowerCase()}</option>`;
-    // Add empty option for fields that can be empty (e.g., heist)
-    const emptyOption = document.createElement("option");
-    emptyOption.value = "";
-    emptyOption.textContent = "(none)";
-    select.append(emptyOption);
     const config = filterConfig[field.key] || {};
     const order = config.order || "alpha";
+
+    // Use explicit option list from plugin if provided, otherwise collect from achievements.
+    const sourceValues = config.options ? config.options.map(String) : [...values];
     let sortedValues;
     if (Array.isArray(order)) {
-      sortedValues = [...values].sort((a, b) => {
+      sortedValues = [...sourceValues].sort((a, b) => {
         const ia = order.indexOf(a);
         const ib = order.indexOf(b);
         if (ia === -1 && ib === -1) return a.localeCompare(b);
@@ -186,8 +219,18 @@ function renderPluginFilters() {
         return ia - ib;
       });
     } else {
-      sortedValues = [...values].sort();
+      sortedValues = [...sourceValues].sort((a, b) => a.localeCompare(b));
     }
+
+    const label = document.createElement("label");
+    label.textContent = field.label;
+    const select = document.createElement("select");
+    select.dataset.pluginKey = field.key;
+    select.innerHTML = `<option value="all">All ${field.label.toLowerCase()}</option>`;
+    const noneOption = document.createElement("option");
+    noneOption.value = "__none__";
+    noneOption.textContent = config.none_label || "(none)";
+    select.append(noneOption);
     sortedValues.forEach((value) => {
       const option = document.createElement("option");
       option.value = value;
@@ -234,7 +277,6 @@ function render() {
 function filteredAchievements(achievements) {
   const search = $("#searchInput").value.trim().toLowerCase();
   const status = $("#statusFilter").value;
-  const missingPlayer = $("#missingPlayerFilter").value;
   const filterConfig = state.dashboard?.plugin_filter_config || {};
   return achievements.filter((achievement) => {
     const haystack = `${achievement.display_name} ${achievement.description}`.toLowerCase();
@@ -242,18 +284,21 @@ function filteredAchievements(achievements) {
     if (status === "missing" && achievement.missing_count === 0) return false;
     if (status === "complete" && achievement.missing_count !== 0) return false;
     if (status === "none" && achievement.achieved_count !== 0) return false;
-    if (missingPlayer !== "all") {
-      const player = achievement.players.find((item) => String(item.player_id) === missingPlayer);
+    for (const playerId of state.missingPlayers) {
+      const player = achievement.players.find((item) => String(item.player_id) === playerId);
       if (!player || player.achieved) return false;
     }
     for (const [key, value] of Object.entries(state.filters)) {
-      if (value !== "all") {
+      if (value === "all") continue;
+      {
         const metaVal = achievement.metadata?.[key];
         const config = filterConfig[key] || {};
         const filterType = config.type || "exact";
         let matches = false;
 
-        if (filterType === "inclusive" && Array.isArray(config.order)) {
+        if (value === "__none__") {
+          matches = !metaVal || (Array.isArray(metaVal) ? metaVal.length === 0 : metaVal === "");
+        } else if (filterType === "inclusive" && Array.isArray(config.order)) {
           // Inclusive filter: match if achievement value is at or below selected in order
           const order = config.order;
           const selectedIdx = order.indexOf(value);
@@ -434,6 +479,7 @@ function toast(message, persistent = false) {
 $("#gameSelect").addEventListener("change", async (event) => {
   state.currentGameId = Number(event.target.value);
   state.filters = {};
+  state.missingPlayers.clear();
   await loadDashboard();
 });
 
@@ -454,7 +500,19 @@ $("#refreshPlayersBtn").addEventListener("click", async () => {
 
 $("#searchInput").addEventListener("input", render);
 $("#statusFilter").addEventListener("change", render);
-$("#missingPlayerFilter").addEventListener("change", render);
+
+$("#missingPlayerFilter").addEventListener("click", () => $("#missingPlayerSearch").focus());
+
+$("#missingPlayerSearch").addEventListener("focus", () => {
+  $("#missingPlayerDropdown").hidden = false;
+  renderPlayerFilter();
+});
+
+$("#missingPlayerSearch").addEventListener("blur", () => {
+  setTimeout(() => { $("#missingPlayerDropdown").hidden = true; }, 150);
+});
+
+$("#missingPlayerSearch").addEventListener("input", renderPlayerFilter);
 $("#adminToggle").addEventListener("click", () => $("#adminPanel").classList.add("open"));
 $("#adminClose").addEventListener("click", () => $("#adminPanel").classList.remove("open"));
 $("#saveAdminSecret").addEventListener("click", async () => {
