@@ -5,7 +5,7 @@ import re
 import urllib.parse
 import urllib.request
 from functools import lru_cache
-from typing import Any, List, Set
+from typing import Any
 
 from app.config import DATA_DIR
 
@@ -16,52 +16,57 @@ metadata_path = DATA_DIR / "payday2_metadata.json"
 wiki_api_url = "https://payday.fandom.com/api.php"
 wiki_page = "Achievements (Payday 2)"
 heist_whitelist_path = DATA_DIR / "payday2_heists.json"
-_whitelist_debug_printed = False
 
 
 @lru_cache(maxsize=1)
-def _load_heist_whitelist() -> Set[str]:
-    """Load a set of known heist names for validation."""
+def _load_heist_whitelist() -> list[str]:
     try:
         with heist_whitelist_path.open("r", encoding="utf-8") as f:
             data = json.load(f)
         if isinstance(data, list):
-            # Normalize: strip, lowercase, and remove leading "the " for consistent matching
-            return {_normalize_heist_name(item) for item in data if isinstance(item, str)}
-        elif isinstance(data, dict):
-            # If dict with a key "heists"
-            if "heists" in data and isinstance(data["heists"], list):
-                return {_normalize_heist_name(item) for item in data["heists"] if isinstance(item, str)}
+            return [str(item).strip() for item in data if isinstance(item, str) and item.strip()]
+        if isinstance(data, dict) and "heists" in data:
+            return [str(item).strip() for item in data["heists"] if isinstance(item, str) and item.strip()]
     except Exception:
-        # If file missing or invalid, return empty set (no filtering)
-        return set()
-    return set()
+        pass
+    return []
 
 
-def _normalize_heist_name(name: str) -> str:
-    """Normalize heist name for consistent matching: lowercase, trim, remove leading 'the '."""
-    normalized = name.strip().lower()
-    if normalized.startswith("the "):
-        normalized = normalized[4:]
-    return normalized
+def _match_heists(text: str) -> list[str]:
+    """Return whitelist heist names that appear as substrings in text (case-insensitive).
+
+    Each name is also tried without a leading 'the ' so that 'The Big Bank' and
+    'Big Bank' both match regardless of how the whitelist entry is phrased.
+    """
+    lower = text.lower()
+    result = []
+    for name in _load_heist_whitelist():
+        low = name.lower()
+        variants = {low}
+        if low.startswith("the "):
+            variants.add(low[4:])
+        else:
+            variants.add("the " + low)
+        if any(v in lower for v in variants):
+            result.append(name)
+    return result
 
 
 def fields() -> list[dict[str, str]]:
     return [
-        {"key": "heist", "label": "Heist"},
+        {"key": "heist", "label": "Heists"},
         {"key": "approach", "label": "Approach"},
         {"key": "difficulty", "label": "Difficulty"},
     ]
 
 
 def filter_config() -> dict[str, dict[str, Any]]:
-    """Return filter configuration for each field.
-    Keys: 'order' (list for ordering), 'type' (filter logic: 'exact', 'inclusive', 'multi')
-    """
     return {
         "heist": {
             "type": "multi",
             "order": "alpha",
+            "options": _load_heist_whitelist(),
+            "none_label": "Not heist specific",
         },
         "approach": {
             "type": "exact",
@@ -74,15 +79,6 @@ def filter_config() -> dict[str, dict[str, Any]]:
                 "Mayhem", "Death Wish", "Death Sentence", "Death Sentence One Down"
             ],
         },
-    }
-    difficulty_order = [
-        "Normal", "Hard", "Very Hard", "Overkill", "Mayhem",
-        "Death Wish", "Death Sentence", "Death Sentence One Down"
-    ]
-    return {
-        "heist": {"type": "multi", "order": "alpha"},
-        "approach": {"type": "exact", "order": "alpha"},
-        "difficulty": {"type": "inclusive", "order": difficulty_order},
     }
 
 
@@ -100,13 +96,11 @@ def enrich(api_name: str, current: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(extra, dict):
         return current
     enriched = dict(current)
-    # Add enrichment from manual metadata
     for key, value in extra.items():
         if value not in ("", None):
             enriched[key] = value
-    # Ensure heist, approach, difficulty keys exist with appropriate defaults
     if "heist" not in enriched:
-        enriched["heist"] = []  # default to empty list
+        enriched["heist"] = []
     if "approach" not in enriched:
         enriched["approach"] = ""
     if "difficulty" not in enriched:
@@ -122,14 +116,23 @@ def enrich_all(achievements: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     for achievement in achievements:
         api_name = achievement.get("name")
         display_name = achievement.get("displayName") or api_name
-        if not api_name or not display_name:
+        if not api_name:
             continue
 
-        entry = by_title.get(_key(str(display_name)))
-        if not entry:
-            continue
+        metadata: dict[str, Any] = {}
 
-        metadata = _metadata_from_entry(entry)
+        # Heist: match whitelist names directly against Steam achievement text.
+        steam_text = f"{display_name or ''} {achievement.get('description') or ''}"
+        heists = _match_heists(steam_text)
+        if heists:
+            metadata["heist"] = heists
+
+        # Approach + difficulty: inferred from the wiki description where available.
+        if display_name:
+            entry = by_title.get(_key(str(display_name)))
+            if entry:
+                metadata.update(_metadata_from_entry(entry))
+
         if metadata:
             enriched[str(api_name)] = metadata
 
@@ -275,66 +278,18 @@ def _description_part(parts: list[str]) -> str:
 def _metadata_from_entry(entry: dict[str, str]) -> dict[str, Any]:
     description = entry["description"]
     clean = _strip_markup(description)
-    heists = _extract_heists(description)
     metadata: dict[str, Any] = {
         "source": "Payday Wiki",
         "source_page": entry["source_page"],
         "wiki_description": clean,
     }
-    if heists:
-        # Store heists as a list to allow multiple values per achievement
-        metadata["heist"] = heists
-
     approach = _infer_approach(clean)
     if approach:
         metadata["approach"] = approach
-
     difficulty = _infer_difficulty(clean)
     if difficulty:
         metadata["difficulty"] = difficulty
-
     return metadata
-
-
-def _extract_heists(wikitext: str) -> list[str]:
-    linked = []
-    for match in re.finditer(r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|([^\]]+))?\]\]", wikitext):
-        target = match.group(1).strip()
-        label = (match.group(2) or target).strip()
-        after = wikitext[match.end() : match.end() + 32].lower()
-        before = wikitext[max(0, match.start() - 24) : match.start()].lower()
-        if any(word in after for word in (" job", " heist")) or any(word in before for word in ("day 1 of the ", "day 2 of the ", "day 3 of the ", "in the ", "on the ")):
-            linked.append(_strip_markup(label))
-
-    plain_text = _strip_markup(wikitext)
-    plain = []
-    for match in re.finditer(
-        r"(?:in|on|of|complete|play)(?: all days of)?(?: day \d+ of)?(?: any)?(?: the)? ([A-Z][A-Za-z0-9 '&:.-]{2,60}?) (?:job|heist)",
-        plain_text,
-    ):
-        plain.append(match.group(1).strip())
-
-    # Combine and filter out non‑heist names
-    candidates = [name for name in [*linked, *plain] if not _non_heist_name(name)]
-    # Load whitelist of known heists; if empty, accept all candidates
-    whitelist = _load_heist_whitelist()
-    # DEBUG: print whitelist info once
-    global _whitelist_debug_printed
-    if not _whitelist_debug_printed:
-        print(f"[DEBUG] heist whitelist loaded, size={len(whitelist)} sample={list(whitelist)[:5] if whitelist else 'empty'}")
-        _whitelist_debug_printed = True
-    if whitelist:
-        # Keep only those whose normalized form appears in the whitelist
-        candidates = [name for name in candidates if _normalize_heist_name(name) in whitelist]
-    # Remove duplicates while preserving order, using normalized form for heist name comparison
-    seen = set()
-    result = []
-    for name in candidates:
-        norm = _normalize_heist_name(name)
-        if norm and norm not in seen:
-            seen.add(norm)
-            result.append(name)
-    return result
 
 
 def _infer_approach(description: str) -> str:
@@ -390,23 +345,6 @@ def _key(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", value.lower())
 
 
-def _unique(values: list[str]) -> list[str]:
-    seen = set()
-    result = []
-    for value in values:
-        key = _key(value)
-        if key and key not in seen:
-            seen.add(key)
-            result.append(value)
-    return result
-
-
 def _is_teaser_description(description: str) -> bool:
     text = description.strip().lower()
     return not text or text.startswith("new_achievement_desc") or text == "this is a secret achievement."
-
-
-def _non_heist_name(name: str) -> bool:
-    lowered = name.lower()
-    blocked = ("enemies", "masks", "weapons", "armors", "skills", "loot", "civilian")
-    return any(item in lowered for item in blocked)

@@ -202,23 +202,15 @@ function renderPluginFilters() {
         }
       }
     }
-    // Remove empty string from values to avoid duplicate empty option
     values.delete("");
-    const label = document.createElement("label");
-    label.textContent = field.label;
-    const select = document.createElement("select");
-    select.dataset.pluginKey = field.key;
-    select.innerHTML = `<option value="all">All ${field.label.toLowerCase()}</option>`;
-    // Add empty option for fields that can be empty (e.g., heist)
-    const emptyOption = document.createElement("option");
-    emptyOption.value = "";
-    emptyOption.textContent = "(none)";
-    select.append(emptyOption);
     const config = filterConfig[field.key] || {};
     const order = config.order || "alpha";
+
+    // Use explicit option list from plugin if provided, otherwise collect from achievements.
+    const sourceValues = config.options ? config.options.map(String) : [...values];
     let sortedValues;
     if (Array.isArray(order)) {
-      sortedValues = [...values].sort((a, b) => {
+      sortedValues = [...sourceValues].sort((a, b) => {
         const ia = order.indexOf(a);
         const ib = order.indexOf(b);
         if (ia === -1 && ib === -1) return a.localeCompare(b);
@@ -227,8 +219,18 @@ function renderPluginFilters() {
         return ia - ib;
       });
     } else {
-      sortedValues = [...values].sort();
+      sortedValues = [...sourceValues].sort((a, b) => a.localeCompare(b));
     }
+
+    const label = document.createElement("label");
+    label.textContent = field.label;
+    const select = document.createElement("select");
+    select.dataset.pluginKey = field.key;
+    select.innerHTML = `<option value="all">All ${field.label.toLowerCase()}</option>`;
+    const noneOption = document.createElement("option");
+    noneOption.value = "__none__";
+    noneOption.textContent = config.none_label || "(none)";
+    select.append(noneOption);
     sortedValues.forEach((value) => {
       const option = document.createElement("option");
       option.value = value;
@@ -287,13 +289,16 @@ function filteredAchievements(achievements) {
       if (!player || player.achieved) return false;
     }
     for (const [key, value] of Object.entries(state.filters)) {
-      if (value !== "all") {
+      if (value === "all") continue;
+      {
         const metaVal = achievement.metadata?.[key];
         const config = filterConfig[key] || {};
         const filterType = config.type || "exact";
         let matches = false;
 
-        if (filterType === "inclusive" && Array.isArray(config.order)) {
+        if (value === "__none__") {
+          matches = !metaVal || (Array.isArray(metaVal) ? metaVal.length === 0 : metaVal === "");
+        } else if (filterType === "inclusive" && Array.isArray(config.order)) {
           // Inclusive filter: match if achievement value is at or below selected in order
           const order = config.order;
           const selectedIdx = order.indexOf(value);
