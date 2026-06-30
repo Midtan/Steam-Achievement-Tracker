@@ -35,8 +35,8 @@ def _load_heist_whitelist() -> list[str]:
 def _match_heists(text: str) -> list[str]:
     """Return whitelist heist names that appear as substrings in text (case-insensitive).
 
-    Each name is also tried without a leading 'the ' so that 'The Big Bank' and
-    'Big Bank' both match regardless of how the whitelist entry is phrased.
+    Each name is tried with and without a leading 'the ' so that e.g. 'The Big Bank'
+    matches whether the achievement text says 'Big Bank' or 'The Big Bank'.
     """
     lower = text.lower()
     result = []
