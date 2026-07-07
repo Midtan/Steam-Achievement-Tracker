@@ -5,6 +5,7 @@ const state = {
   dashboard: null,
   filters: {},
   missingPlayers: new Set(),
+  missingStrict: false,
   adminSecret: "",
   adminVerified: false,
 };
@@ -284,9 +285,12 @@ function filteredAchievements(achievements) {
     if (status === "missing" && achievement.missing_count === 0) return false;
     if (status === "complete" && achievement.missing_count !== 0) return false;
     if (status === "none" && achievement.achieved_count !== 0) return false;
-    for (const playerId of state.missingPlayers) {
-      const player = achievement.players.find((item) => String(item.player_id) === playerId);
-      if (!player || player.achieved) return false;
+    if (state.missingPlayers.size) {
+      for (const player of achievement.players) {
+        const isSelected = state.missingPlayers.has(String(player.player_id));
+        if (isSelected && player.achieved) return false;
+        if (!isSelected && state.missingStrict && !player.achieved) return false;
+      }
     }
     for (const [key, value] of Object.entries(state.filters)) {
       if (value === "all") continue;
@@ -513,6 +517,11 @@ $("#missingPlayerSearch").addEventListener("blur", () => {
 });
 
 $("#missingPlayerSearch").addEventListener("input", renderPlayerFilter);
+
+$("#missingStrictToggle").addEventListener("change", (event) => {
+  state.missingStrict = event.target.checked;
+  render();
+});
 $("#adminToggle").addEventListener("click", () => $("#adminPanel").classList.add("open"));
 $("#adminClose").addEventListener("click", () => $("#adminPanel").classList.remove("open"));
 $("#saveAdminSecret").addEventListener("click", async () => {

@@ -51,7 +51,16 @@
           </select>
         </label>
         <label>
-          Missing players
+          <span class="field-label-row">
+            Missing players
+            <span class="strict-toggle" title="Loose: selected players are missing, others don't matter. Strict: only selected players are missing, everyone else has it.">
+              <span class="strict-toggle-text">Strict</span>
+              <span class="switch">
+                <input type="checkbox" id="missingStrictToggle">
+                <span class="switch-track"></span>
+              </span>
+            </span>
+          </span>
           <div class="player-multiselect" id="missingPlayerFilter">
             <div class="pills-box" id="missingPillsBox">
               <input type="text" id="missingPlayerSearch" placeholder="Any player" autocomplete="off">
