@@ -189,7 +189,7 @@ function renderPluginFilters() {
       const value = achievement.metadata?.[field.key];
       if (value !== undefined && value !== null) {
         if (Array.isArray(value)) {
-          // If the plugin returns an array (e.g., multiple heists), add each element
+          // Plugin returned multiple values for this field (e.g. an achievement tied to several items); add each
           for (const item of value) {
             if (item !== null && item !== undefined) {
               const str = String(item).trim();
@@ -345,22 +345,26 @@ function renderAchievement(achievement) {
   const icon = achievement.icon || achievement.icon_gray || "";
   let tagsHtml = "";
   const meta = achievement.metadata || {};
-  for (const [key, value] of Object.entries(meta)) {
+  const pluginFields = state.dashboard?.plugin_fields || [];
+  // Only declared plugin fields become tags; plugins may stash other keys in metadata
+  // (e.g. as intermediate data for enrich()) without them leaking into the UI.
+  for (const field of pluginFields) {
+    const value = meta[field.key];
     if (value === null || value === undefined || value === "") continue;
-    if (key === "wiki_description") continue; // skip duplicate description
-    let tagHtml;
-    if (key === "source") {
-      const page = meta.source_page;
-      if (page) {
-        const url = "https://payday.fandom.com/wiki/" + encodeURIComponent(String(page).trim().replace(/ /g, "_"));
-        tagHtml = `<a class="tag" href="${escapeHtml(url)}" target="_blank" rel="noopener">Source: Payday Wiki</a>`;
-      } else {
-        tagHtml = `<span class="tag">${escapeHtml(labelize(key))}: ${escapeHtml(String(value))}</span>`;
-      }
+    if (Array.isArray(value)) {
+      if (!value.length) continue;
+      tagsHtml += `<span class="tag">${escapeHtml(field.label)}: ${escapeHtml(value.join(", "))}</span>`;
     } else {
-      tagHtml = `<span class="tag">${escapeHtml(labelize(key))}: ${escapeHtml(String(value))}</span>`;
+      tagsHtml += `<span class="tag">${escapeHtml(field.label)}: ${escapeHtml(String(value))}</span>`;
     }
-    tagsHtml += tagHtml;
+  }
+  // Generic convention: any plugin can attach an external-source link via "source_label"
+  // (display text) and "source_url" (link target, optional).
+  if (meta.source_label) {
+    const url = meta.source_url;
+    tagsHtml += url
+      ? `<a class="tag" href="${escapeHtml(url)}" target="_blank" rel="noopener">Source: ${escapeHtml(String(meta.source_label))}</a>`
+      : `<span class="tag">Source: ${escapeHtml(String(meta.source_label))}</span>`;
   }
   article.innerHTML = `
     <img src="${escapeHtml(icon)}" alt="">
@@ -459,10 +463,6 @@ function escapeHtml(value) {
     '"': "&quot;",
     "'": "&#39;",
   })[char]);
-}
-
-function labelize(key) {
-  return key.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 let toastTimer = null;
