@@ -221,13 +221,13 @@ main {
 }
 
 .tag-link {
-  color: var(--info);
-  text-decoration: none;
+  color: inherit;
+  text-decoration: underline;
   cursor: pointer;
 }
 
 .tag-link:hover {
-  text-decoration: underline;
+  color: var(--info);
 }
 
 .player-grid {
