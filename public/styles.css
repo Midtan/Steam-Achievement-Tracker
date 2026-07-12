@@ -186,13 +186,13 @@ main {
 }
 
 .achievement:hover {
-  border-color: var(--accent);
+  border-color: var(--info);
 }
 
 .achievement.pinned {
-  border-color: var(--accent);
+  border-color: var(--info);
   filter: brightness(1.12);
-  box-shadow: inset 3px 0 0 var(--accent);
+  box-shadow: inset 3px 0 0 var(--info);
 }
 
 .description {
@@ -220,13 +220,14 @@ main {
   font-size: 12px;
 }
 
-.tag-clickable {
+.tag-link {
+  color: var(--info);
+  text-decoration: none;
   cursor: pointer;
 }
 
-.tag-clickable:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+.tag-link:hover {
+  text-decoration: underline;
 }
 
 .player-grid {

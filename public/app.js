@@ -377,9 +377,9 @@ function filteredAchievements(achievements) {
   });
 }
 
-function tagLinkOrSpan(field, value) {
+function tagLink(field, value) {
   const str = String(value);
-  return `<a href="#" class="tag tag-clickable" data-filter-key="${escapeHtml(field.key)}" data-filter-value="${escapeHtml(str)}">${escapeHtml(field.label)}: ${escapeHtml(str)}</a>`;
+  return `<a href="#" class="tag-link" data-filter-key="${escapeHtml(field.key)}" data-filter-value="${escapeHtml(str)}">${escapeHtml(str)}</a>`;
 }
 
 // Generic: apply a plugin filter value and keep its <select> in sync, wherever it was triggered from.
@@ -399,25 +399,17 @@ function renderAchievement(achievement) {
   const pluginFields = state.dashboard?.plugin_fields || [];
   // Only declared plugin fields become tags; plugins may stash other keys in metadata
   // (e.g. as intermediate data for enrich()) without them leaking into the UI.
-  // Generic convention: a field marked "clickable" renders its value(s) as buttons
-  // that apply the matching plugin filter on click, instead of static text.
+  // Generic convention: a field marked "clickable" renders its value(s) as links
+  // (within the same single pill) that apply the matching plugin filter on click.
   for (const field of pluginFields) {
     const value = meta[field.key];
     if (value === null || value === undefined || value === "") continue;
-    if (Array.isArray(value)) {
-      if (!value.length) continue;
-      if (field.clickable) {
-        for (const item of value) {
-          tagsHtml += tagLinkOrSpan(field, item);
-        }
-      } else {
-        tagsHtml += `<span class="tag">${escapeHtml(field.label)}: ${escapeHtml(value.join(", "))}</span>`;
-      }
-    } else if (field.clickable) {
-      tagsHtml += tagLinkOrSpan(field, value);
-    } else {
-      tagsHtml += `<span class="tag">${escapeHtml(field.label)}: ${escapeHtml(String(value))}</span>`;
-    }
+    const items = (Array.isArray(value) ? value : [value]).filter((item) => item !== null && item !== undefined && String(item) !== "");
+    if (!items.length) continue;
+    const valueHtml = field.clickable
+      ? items.map((item) => tagLink(field, item)).join(", ")
+      : escapeHtml(items.join(", "));
+    tagsHtml += `<span class="tag">${escapeHtml(field.label)}: ${valueHtml}</span>`;
   }
   // Generic convention: any plugin can attach an external-source link via "source_label"
   // (display text) and "source_url" (link target, optional).
@@ -466,7 +458,7 @@ function renderAchievement(achievement) {
         .join("")}
     </div>
   `;
-  article.querySelectorAll(".tag-clickable").forEach((link) => {
+  article.querySelectorAll(".tag-link").forEach((link) => {
     link.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
