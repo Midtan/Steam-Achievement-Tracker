@@ -180,38 +180,19 @@ main {
   line-height: 1.25;
 }
 
-.achievement-title-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.pin-btn {
-  flex-shrink: 0;
-  min-height: unset;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--panel-2);
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1;
-  opacity: 0.55;
-  filter: grayscale(1);
+.achievement {
   cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 
-.pin-btn:hover {
-  opacity: 0.85;
-}
-
-.pin-btn.pinned {
+.achievement:hover {
   border-color: var(--accent);
-  opacity: 1;
-  filter: none;
+}
+
+.achievement.pinned {
+  border-color: var(--accent);
+  background: #262013;
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .description {

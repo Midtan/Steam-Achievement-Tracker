@@ -405,13 +405,12 @@ function renderAchievement(achievement) {
       : `<span class="tag">Source: ${escapeHtml(String(meta.source_label))}</span>`;
   }
   const isPinned = state.pinned.has(achievement.api_name);
+  article.classList.toggle("pinned", isPinned);
+  article.title = isPinned ? "Click to unpin" : "Click to pin to top";
   article.innerHTML = `
     <img src="${escapeHtml(icon)}" alt="">
     <div>
-      <div class="achievement-title-row">
-        <h3>${escapeHtml(achievement.display_name)}</h3>
-        <button type="button" class="pin-btn${isPinned ? " pinned" : ""}" aria-pressed="${isPinned}" title="${isPinned ? "Unpin" : "Pin to top"}">📌</button>
-      </div>
+      <h3>${escapeHtml(achievement.display_name)}</h3>
       <p class="description">${escapeHtml(achievement.description || "No description available.")}</p>
       <div class="tags">
         <span class="tag">${achievement.achieved_count}/${achievement.players.length} complete</span>
@@ -444,7 +443,8 @@ function renderAchievement(achievement) {
         .join("")}
     </div>
   `;
-  article.querySelector(".pin-btn").addEventListener("click", () => {
+  article.addEventListener("click", (event) => {
+    if (event.target.closest("a")) return;
     if (state.pinned.has(achievement.api_name)) {
       state.pinned.delete(achievement.api_name);
     } else {
