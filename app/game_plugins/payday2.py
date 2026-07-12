@@ -54,7 +54,7 @@ def _match_heists(text: str) -> list[str]:
 
 def fields() -> list[dict[str, str]]:
     return [
-        {"key": "heist", "label": "Heists"},
+        {"key": "heist", "label": "Heists", "clickable": True},
         {"key": "approach", "label": "Approach"},
         {"key": "difficulty", "label": "Difficulty"},
     ]

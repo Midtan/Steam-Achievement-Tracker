@@ -210,12 +210,23 @@ main {
 }
 
 .tag {
+  display: inline-block;
+  min-height: auto;
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 3px 8px;
   color: #d7e0e7;
   background: #111820;
   font-size: 12px;
+}
+
+.tag-clickable {
+  cursor: pointer;
+}
+
+.tag-clickable:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .player-grid {

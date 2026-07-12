@@ -377,6 +377,19 @@ function filteredAchievements(achievements) {
   });
 }
 
+function tagLinkOrSpan(field, value) {
+  const str = String(value);
+  return `<a href="#" class="tag tag-clickable" data-filter-key="${escapeHtml(field.key)}" data-filter-value="${escapeHtml(str)}">${escapeHtml(field.label)}: ${escapeHtml(str)}</a>`;
+}
+
+// Generic: apply a plugin filter value and keep its <select> in sync, wherever it was triggered from.
+function setPluginFilter(key, value) {
+  state.filters[key] = value;
+  const select = document.querySelector(`#pluginFilters select[data-plugin-key="${CSS.escape(key)}"]`);
+  if (select) select.value = value;
+  render();
+}
+
 function renderAchievement(achievement) {
   const article = document.createElement("article");
   article.className = "achievement";
@@ -386,12 +399,22 @@ function renderAchievement(achievement) {
   const pluginFields = state.dashboard?.plugin_fields || [];
   // Only declared plugin fields become tags; plugins may stash other keys in metadata
   // (e.g. as intermediate data for enrich()) without them leaking into the UI.
+  // Generic convention: a field marked "clickable" renders its value(s) as buttons
+  // that apply the matching plugin filter on click, instead of static text.
   for (const field of pluginFields) {
     const value = meta[field.key];
     if (value === null || value === undefined || value === "") continue;
     if (Array.isArray(value)) {
       if (!value.length) continue;
-      tagsHtml += `<span class="tag">${escapeHtml(field.label)}: ${escapeHtml(value.join(", "))}</span>`;
+      if (field.clickable) {
+        for (const item of value) {
+          tagsHtml += tagLinkOrSpan(field, item);
+        }
+      } else {
+        tagsHtml += `<span class="tag">${escapeHtml(field.label)}: ${escapeHtml(value.join(", "))}</span>`;
+      }
+    } else if (field.clickable) {
+      tagsHtml += tagLinkOrSpan(field, value);
     } else {
       tagsHtml += `<span class="tag">${escapeHtml(field.label)}: ${escapeHtml(String(value))}</span>`;
     }
@@ -443,6 +466,13 @@ function renderAchievement(achievement) {
         .join("")}
     </div>
   `;
+  article.querySelectorAll(".tag-clickable").forEach((link) => {
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setPluginFilter(link.dataset.filterKey, link.dataset.filterValue);
+    });
+  });
   article.addEventListener("click", (event) => {
     if (event.target.closest("a")) return;
     if (state.pinned.has(achievement.api_name)) {
