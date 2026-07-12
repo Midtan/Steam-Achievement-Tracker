@@ -6,6 +6,7 @@ const state = {
   filters: {},
   missingPlayers: new Set(),
   missingStrict: false,
+  pinned: new Set(),
   adminSecret: "",
   adminVerified: false,
 };
@@ -27,6 +28,25 @@ async function api(path, options = {}) {
   return data;
 }
 
+// Shareable-link state: current game (by Steam app id) and pinned achievement keys
+// are encoded into the URL query string so a link fully reproduces a selection.
+function readUrlState() {
+  const params = new URLSearchParams(location.search);
+  return {
+    appId: params.get("game") || "",
+    pins: (params.get("pins") || "").split(",").map((s) => s.trim()).filter(Boolean),
+  };
+}
+
+function syncUrl() {
+  const game = state.games.find((g) => g.id === state.currentGameId);
+  const params = new URLSearchParams();
+  if (game) params.set("game", String(game.app_id));
+  if (state.pinned.size) params.set("pins", [...state.pinned].join(","));
+  const query = params.toString();
+  history.replaceState(null, "", query ? `${location.pathname}?${query}` : location.pathname);
+}
+
 async function loadConfig() {
   await restoreAdminSecret();
   const [games, players, plugins, health] = await Promise.all([
@@ -43,9 +63,18 @@ async function loadConfig() {
   if (health.admin_secret_is_default) {
     toast("ADMIN_SECRET is still the default value: change-me");
   }
+  const urlState = readUrlState();
+  if (urlState.appId) {
+    const matched = state.games.find((g) => String(g.app_id) === urlState.appId);
+    if (matched) {
+      state.currentGameId = matched.id;
+      state.pinned = new Set(urlState.pins);
+    }
+  }
   if (!state.currentGameId && state.games.length) {
     state.currentGameId = state.games[0].id;
   }
+  syncUrl();
   if (state.currentGameId) await loadDashboard();
   render();
 }
@@ -263,6 +292,11 @@ function render() {
   }
 
   const achievements = filteredAchievements(dashboard.achievements);
+  achievements.sort((a, b) => {
+    const pa = state.pinned.has(a.api_name) ? 0 : 1;
+    const pb = state.pinned.has(b.api_name) ? 0 : 1;
+    return pa - pb;
+  });
   empty.style.display = achievements.length ? "none" : "block";
   $("#achievementCount").textContent = String(dashboard.achievements.length);
   $("#completeCount").textContent = String(dashboard.achievements.filter((a) => a.missing_count === 0).length);
@@ -370,10 +404,14 @@ function renderAchievement(achievement) {
       ? `<a class="tag" href="${escapeHtml(url)}" target="_blank" rel="noopener">Source: ${escapeHtml(String(meta.source_label))}</a>`
       : `<span class="tag">Source: ${escapeHtml(String(meta.source_label))}</span>`;
   }
+  const isPinned = state.pinned.has(achievement.api_name);
   article.innerHTML = `
     <img src="${escapeHtml(icon)}" alt="">
     <div>
-      <h3>${escapeHtml(achievement.display_name)}</h3>
+      <div class="achievement-title-row">
+        <h3>${escapeHtml(achievement.display_name)}</h3>
+        <button type="button" class="pin-btn${isPinned ? " pinned" : ""}" aria-pressed="${isPinned}" title="${isPinned ? "Unpin" : "Pin to top"}">📌</button>
+      </div>
       <p class="description">${escapeHtml(achievement.description || "No description available.")}</p>
       <div class="tags">
         <span class="tag">${achievement.achieved_count}/${achievement.players.length} complete</span>
@@ -406,6 +444,15 @@ function renderAchievement(achievement) {
         .join("")}
     </div>
   `;
+  article.querySelector(".pin-btn").addEventListener("click", () => {
+    if (state.pinned.has(achievement.api_name)) {
+      state.pinned.delete(achievement.api_name);
+    } else {
+      state.pinned.add(achievement.api_name);
+    }
+    syncUrl();
+    render();
+  });
   return article;
 }
 
@@ -484,6 +531,8 @@ $("#gameSelect").addEventListener("change", async (event) => {
   state.currentGameId = Number(event.target.value);
   state.filters = {};
   state.missingPlayers.clear();
+  state.pinned.clear();
+  syncUrl();
   await loadDashboard();
 });
 
