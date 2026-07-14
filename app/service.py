@@ -4,8 +4,10 @@ import time
 from datetime import datetime
 from typing import Any
 
+import json
+
 from . import steam
-from .config import PLAYER_REFRESH_TTL_SECONDS
+from .config import DATA_DIR, PLAYER_REFRESH_TTL_SECONDS
 from .db import connect, json_dump, json_load, row_to_dict, utc_now
 from .game_plugins import load_plugin
 
@@ -129,6 +131,19 @@ def refresh_game_schema(game_id: int) -> dict[str, Any]:
     }
 
 
+def _dump_player_stats(app_id: int, steam_id: str) -> None:
+    """Dump raw GetUserStatsForGame response to disk for inspection/testing."""
+    try:
+        stats = steam.fetch_player_stats(app_id, steam_id)
+    except steam.SteamError:
+        return
+    dump_dir = DATA_DIR / "stat_dumps"
+    dump_dir.mkdir(parents=True, exist_ok=True)
+    dump_path = dump_dir / f"{app_id}_{steam_id}.json"
+    with dump_path.open("w", encoding="utf-8") as handle:
+        json.dump(stats, handle, indent=2)
+
+
 def refresh_player_state(game_id: int, player_id: int) -> dict[str, Any]:
     with connect() as conn:
         game = conn.execute("SELECT * FROM games WHERE id = ?", (game_id,)).fetchone()
@@ -144,6 +159,8 @@ def refresh_player_state(game_id: int, player_id: int) -> dict[str, Any]:
             f"Steam profile or game details are private. "
             f"Please ensure the Steam profile and game details are set to public in Steam privacy settings."
         ) from exc
+    _dump_player_stats(int(game["app_id"]), str(player["steam_id"]))
+
     now = utc_now()
     with connect() as conn:
         for ach in achievements:
