@@ -17,6 +17,8 @@ class GamePlugin(Protocol):
 
     def enrich_all(self, achievements: list[dict[str, Any]]) -> dict[str, dict[str, Any]]: ...
 
+    def player_progress(self, stats: dict[str, Any]) -> dict[str, int]: ...
+
 
 def _discover_slugs() -> list[str]:
     import app.game_plugins as _pkg

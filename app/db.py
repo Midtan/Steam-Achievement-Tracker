@@ -68,6 +68,7 @@ def init_db() -> None:
                 api_name TEXT NOT NULL,
                 achieved INTEGER NOT NULL DEFAULT 0,
                 unlock_time INTEGER NOT NULL DEFAULT 0,
+                progress_current INTEGER,
                 updated_at TEXT NOT NULL,
                 PRIMARY KEY(game_id, player_id, api_name),
                 FOREIGN KEY(game_id) REFERENCES games(id) ON DELETE CASCADE,
@@ -83,6 +84,10 @@ def init_db() -> None:
             );
             """
         )
+        try:
+            conn.execute("ALTER TABLE player_achievements ADD COLUMN progress_current INTEGER")
+        except sqlite3.OperationalError:
+            pass
 
 
 def row_to_dict(row: sqlite3.Row) -> dict[str, Any]:

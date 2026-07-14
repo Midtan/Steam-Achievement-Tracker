@@ -4,10 +4,8 @@ import time
 from datetime import datetime
 from typing import Any
 
-import json
-
 from . import steam
-from .config import DATA_DIR, PLAYER_REFRESH_TTL_SECONDS
+from .config import PLAYER_REFRESH_TTL_SECONDS
 from .db import connect, json_dump, json_load, row_to_dict, utc_now
 from .game_plugins import load_plugin
 
@@ -131,19 +129,6 @@ def refresh_game_schema(game_id: int) -> dict[str, Any]:
     }
 
 
-def _dump_player_stats(app_id: int, steam_id: str) -> None:
-    """Dump raw GetUserStatsForGame response to disk for inspection/testing."""
-    try:
-        stats = steam.fetch_player_stats(app_id, steam_id)
-    except steam.SteamError:
-        return
-    dump_dir = DATA_DIR / "stat_dumps"
-    dump_dir.mkdir(parents=True, exist_ok=True)
-    dump_path = dump_dir / f"{app_id}_{steam_id}.json"
-    with dump_path.open("w", encoding="utf-8") as handle:
-        json.dump(stats, handle, indent=2)
-
-
 def refresh_player_state(game_id: int, player_id: int) -> dict[str, Any]:
     with connect() as conn:
         game = conn.execute("SELECT * FROM games WHERE id = ?", (game_id,)).fetchone()
@@ -159,7 +144,15 @@ def refresh_player_state(game_id: int, player_id: int) -> dict[str, Any]:
             f"Steam profile or game details are private. "
             f"Please ensure the Steam profile and game details are set to public in Steam privacy settings."
         ) from exc
-    _dump_player_stats(int(game["app_id"]), str(player["steam_id"]))
+
+    plugin = load_plugin(game["plugin"])
+    progress = {}
+    if plugin and hasattr(plugin, "player_progress"):
+        try:
+            stats = steam.fetch_player_stats(int(game["app_id"]), str(player["steam_id"]))
+            progress = plugin.player_progress(stats)
+        except Exception:
+            progress = {}
 
     now = utc_now()
     with connect() as conn:
@@ -169,11 +162,12 @@ def refresh_player_state(game_id: int, player_id: int) -> dict[str, Any]:
                 continue
             conn.execute(
                 """
-                INSERT INTO player_achievements(game_id, player_id, api_name, achieved, unlock_time, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO player_achievements(game_id, player_id, api_name, achieved, unlock_time, progress_current, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(game_id, player_id, api_name) DO UPDATE SET
                     achieved = excluded.achieved,
                     unlock_time = excluded.unlock_time,
+                    progress_current = excluded.progress_current,
                     updated_at = excluded.updated_at
                 """,
                 (
@@ -182,6 +176,7 @@ def refresh_player_state(game_id: int, player_id: int) -> dict[str, Any]:
                     api_name,
                     1 if ach.get("achieved") else 0,
                     int(ach.get("unlocktime") or 0),
+                    progress.get(api_name),
                     now,
                 ),
             )
@@ -240,6 +235,7 @@ def dashboard(game_id: int, refresh_stale: bool = True) -> dict[str, Any]:
                     "avatar_url": player.get("avatar_url", ""),
                     "achieved": achieved,
                     "unlock_time": state["unlock_time"] if state else 0,
+                    "progress": state["progress_current"] if state else None,
                 }
             )
         achievement["players"] = per_player

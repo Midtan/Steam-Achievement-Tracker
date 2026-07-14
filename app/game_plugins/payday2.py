@@ -25,6 +25,7 @@ metadata_path = DATA_DIR / "payday2_metadata.json"
 wiki_api_url = "https://payday.fandom.com/api.php"
 wiki_page = "Achievements (Payday 2)"
 heist_whitelist_path = DATA_DIR / "payday2_heists.json"
+progress_keys_path = DATA_DIR / "payday2_achievement_progress_keys.json"
 
 
 @lru_cache(maxsize=1)
@@ -39,6 +40,27 @@ def _load_heist_whitelist() -> list[str]:
     except Exception:
         pass
     return []
+
+
+@lru_cache(maxsize=1)
+def _load_progress_keys() -> dict[str, dict[str, Any]]:
+    """Achievement key -> {"target": int, "value_key": str | None} from the progress-keys file.
+
+    value_key is the stat name to look up in GetUserStatsForGame; it is None for achievements
+    where that mapping is unknown, in which case only the target can be shown.
+    """
+    try:
+        with progress_keys_path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, list):
+            return {
+                str(item["key"]): item
+                for item in data
+                if isinstance(item, dict) and item.get("key") and item.get("target") is not None
+            }
+    except Exception:
+        pass
+    return {}
 
 
 def _match_heists(text: str) -> list[str]:
@@ -114,7 +136,31 @@ def enrich(api_name: str, current: dict[str, Any]) -> dict[str, Any]:
         enriched["approach"] = ""
     if "difficulty" not in enriched:
         enriched["difficulty"] = ""
+    progress = _load_progress_keys().get(api_name)
+    if progress:
+        enriched["progress_target"] = progress["target"]
+        if not progress.get("value_key"):
+            enriched["progress_unknown"] = True
     return enriched
+
+
+def player_progress(stats: dict[str, Any]) -> dict[str, int]:
+    """Map achievement key -> current stat value, from a raw GetUserStatsForGame response.
+
+    A stat missing from the response means the player has never triggered it, so it counts as 0
+    (this is why e.g. a fresh account has no "kills" stat entry at all, not a 0-valued one).
+    """
+    raw_stats = stats.get("playerstats", {}).get("stats", [])
+    if not isinstance(raw_stats, list):
+        return {}
+    values = {entry.get("name"): entry.get("value", 0) for entry in raw_stats if entry.get("name")}
+    result = {}
+    for key, info in _load_progress_keys().items():
+        value_key = info.get("value_key")
+        if not value_key:
+            continue
+        result[key] = int(values.get(value_key, 0))
+    return result
 
 
 def enrich_all(achievements: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:

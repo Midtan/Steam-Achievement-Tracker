@@ -377,6 +377,24 @@ function filteredAchievements(achievements) {
   });
 }
 
+// Shortens large numbers (e.g. progress targets) so they don't overflow small badges.
+function formatCompactNumber(value) {
+  const num = Number(value) || 0;
+  const units = [
+    [1e9, "B"],
+    [1e6, "M"],
+    [1e3, "k"],
+  ];
+  for (const [threshold, suffix] of units) {
+    if (Math.abs(num) >= threshold) {
+      const scaled = num / threshold;
+      const text = scaled % 1 === 0 ? scaled.toFixed(0) : scaled.toFixed(1);
+      return `${text}${suffix}`;
+    }
+  }
+  return String(num);
+}
+
 function tagLink(field, value) {
   const str = String(value);
   return `<a href="#" class="tag-link" data-filter-key="${escapeHtml(field.key)}" data-filter-value="${escapeHtml(str)}">${escapeHtml(str)}</a>`;
@@ -441,7 +459,17 @@ function renderAchievement(achievement) {
           const name = escapeHtml(player.display_name);
           const achieved = player.achieved;
           const statusClass = achieved ? "achieved" : "missing";
-          const statusIcon = achieved ? '<span class="status-icon" title="Achieved">✓</span>' : '';
+          // Generic convention: a "progress_target" in metadata means this achievement tracks
+          // toward a numeric goal; per-player "progress" is the current value (null = unknown,
+          // e.g. when a plugin doesn't know which stat to read it from).
+          let statusIcon = achieved ? '<span class="status-icon" title="Achieved">✓</span>' : "";
+          if (!achieved && meta.progress_target) {
+            const target = meta.progress_target;
+            const known = !meta.progress_unknown && player.progress !== null && player.progress !== undefined;
+            const currentText = known ? formatCompactNumber(player.progress) : "?";
+            const titleText = known ? `Progress: ${player.progress}/${target}` : `Progress target: ${target} (current value unknown)`;
+            statusIcon = `<span class="status-icon progress-badge${known ? "" : " unknown"}" title="${titleText}">${currentText}/${formatCompactNumber(target)}</span>`;
+          }
           if (avatar) {
             return `<div class="player-avatar ${statusClass}" title="${name}">
               <img src="${escapeHtml(avatar)}" alt="${name}" loading="lazy">
