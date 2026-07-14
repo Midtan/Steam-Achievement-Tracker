@@ -1,5 +1,14 @@
 from __future__ import annotations
 
+
+#######
+### Payday 2 Metadata plugin
+### sources for additional data:
+#### payday2_heists.json: https://gist.github.com/FromDarkHell/d1efbacfba7c990dc6e560dc9f9c223e
+#### payday2_additional_achievement_data.csv: https://docs.google.com/spreadsheets/d/1Y-IokBys-g4Dwe0ZI07X3RM4lS23lb4BAQxe-6iBrDE/edit?gid=0#gid=0 (unused as of now)
+#######
+
+
 import json
 import re
 import urllib.parse
