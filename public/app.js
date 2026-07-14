@@ -310,12 +310,12 @@ function render() {
 }
 
 function filteredAchievements(achievements) {
-  const search = $("#searchInput").value.trim().toLowerCase();
+  const searchTerms = $("#searchInput").value.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const status = $("#statusFilter").value;
   const filterConfig = state.dashboard?.plugin_filter_config || {};
   return achievements.filter((achievement) => {
-    const haystack = `${achievement.display_name} ${achievement.description}`.toLowerCase();
-    if (search && !haystack.includes(search)) return false;
+    const haystack = `${achievement.display_name} ${achievement.description} ${achievement.api_name}`.toLowerCase();
+    if (searchTerms.length && !searchTerms.every((term) => haystack.includes(term))) return false;
     if (status === "missing" && achievement.missing_count === 0) return false;
     if (status === "complete" && achievement.missing_count !== 0) return false;
     if (status === "none" && achievement.achieved_count !== 0) return false;
