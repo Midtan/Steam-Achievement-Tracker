@@ -191,6 +191,13 @@ def enrich_all(achievements: list[dict]) -> dict[str, dict]:
 
 Metadata returned by the plugin is stored as JSON in the `achievements.metadata` column and sent to the frontend via `/api/games/<id>/dashboard` under each achievement's `metadata` key.
 
+The frontend renders one tag per field declared by `fields()` (using that field's `label`), pulling the value from `metadata[key]`. Metadata keys not declared in `fields()` are never shown — a plugin can freely stash extra working data in the metadata dict (e.g. a raw scraped description used only to derive other fields) without it leaking into the UI.
+
+One key is given special generic handling, usable by any plugin that pulls data from an external source — it does not need to be declared in `fields()`:
+
+- `source_label` — rendered as a tag reading `Source: <source_label>`, linking to `source_url` if also present (plain text tag otherwise).
+- `source_url` — the URL the `source_label` tag links to.
+
 ### Manual metadata files
 
 Plugins can load supporting data from `data/`. Any file in `data/` is gitignored by default — copy from a `.sample.*` if one exists. Manual data can serve as an override layer on top of auto-fetched data (see the Payday 2 plugin for an example).

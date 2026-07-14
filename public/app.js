@@ -5,6 +5,8 @@ const state = {
   dashboard: null,
   filters: {},
   missingPlayers: new Set(),
+  missingStrict: false,
+  pinned: new Set(),
   adminSecret: "",
   adminVerified: false,
 };
@@ -26,6 +28,25 @@ async function api(path, options = {}) {
   return data;
 }
 
+// Shareable-link state: current game (by Steam app id) and pinned achievement keys
+// are encoded into the URL query string so a link fully reproduces a selection.
+function readUrlState() {
+  const params = new URLSearchParams(location.search);
+  return {
+    appId: params.get("game") || "",
+    pins: (params.get("pins") || "").split(",").map((s) => s.trim()).filter(Boolean),
+  };
+}
+
+function syncUrl() {
+  const game = state.games.find((g) => g.id === state.currentGameId);
+  const params = new URLSearchParams();
+  if (game) params.set("game", String(game.app_id));
+  if (state.pinned.size) params.set("pins", [...state.pinned].join(","));
+  const query = params.toString();
+  history.replaceState(null, "", query ? `${location.pathname}?${query}` : location.pathname);
+}
+
 async function loadConfig() {
   await restoreAdminSecret();
   const [games, players, plugins, health] = await Promise.all([
@@ -42,9 +63,18 @@ async function loadConfig() {
   if (health.admin_secret_is_default) {
     toast("ADMIN_SECRET is still the default value: change-me");
   }
+  const urlState = readUrlState();
+  if (urlState.appId) {
+    const matched = state.games.find((g) => String(g.app_id) === urlState.appId);
+    if (matched) {
+      state.currentGameId = matched.id;
+      state.pinned = new Set(urlState.pins);
+    }
+  }
   if (!state.currentGameId && state.games.length) {
     state.currentGameId = state.games[0].id;
   }
+  syncUrl();
   if (state.currentGameId) await loadDashboard();
   render();
 }
@@ -189,7 +219,7 @@ function renderPluginFilters() {
       const value = achievement.metadata?.[field.key];
       if (value !== undefined && value !== null) {
         if (Array.isArray(value)) {
-          // If the plugin returns an array (e.g., multiple heists), add each element
+          // Plugin returned multiple values for this field (e.g. an achievement tied to several items); add each
           for (const item of value) {
             if (item !== null && item !== undefined) {
               const str = String(item).trim();
@@ -262,6 +292,11 @@ function render() {
   }
 
   const achievements = filteredAchievements(dashboard.achievements);
+  achievements.sort((a, b) => {
+    const pa = state.pinned.has(a.api_name) ? 0 : 1;
+    const pb = state.pinned.has(b.api_name) ? 0 : 1;
+    return pa - pb;
+  });
   empty.style.display = achievements.length ? "none" : "block";
   $("#achievementCount").textContent = String(dashboard.achievements.length);
   $("#completeCount").textContent = String(dashboard.achievements.filter((a) => a.missing_count === 0).length);
@@ -275,18 +310,21 @@ function render() {
 }
 
 function filteredAchievements(achievements) {
-  const search = $("#searchInput").value.trim().toLowerCase();
+  const searchTerms = $("#searchInput").value.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const status = $("#statusFilter").value;
   const filterConfig = state.dashboard?.plugin_filter_config || {};
   return achievements.filter((achievement) => {
-    const haystack = `${achievement.display_name} ${achievement.description}`.toLowerCase();
-    if (search && !haystack.includes(search)) return false;
+    const haystack = `${achievement.display_name} ${achievement.description} ${achievement.api_name}`.toLowerCase();
+    if (searchTerms.length && !searchTerms.every((term) => haystack.includes(term))) return false;
     if (status === "missing" && achievement.missing_count === 0) return false;
     if (status === "complete" && achievement.missing_count !== 0) return false;
     if (status === "none" && achievement.achieved_count !== 0) return false;
-    for (const playerId of state.missingPlayers) {
-      const player = achievement.players.find((item) => String(item.player_id) === playerId);
-      if (!player || player.achieved) return false;
+    if (state.missingPlayers.size) {
+      for (const player of achievement.players) {
+        const isSelected = state.missingPlayers.has(String(player.player_id));
+        if (isSelected && player.achieved) return false;
+        if (!isSelected && state.missingStrict && !player.achieved) return false;
+      }
     }
     for (const [key, value] of Object.entries(state.filters)) {
       if (value === "all") continue;
@@ -339,29 +377,51 @@ function filteredAchievements(achievements) {
   });
 }
 
+function tagLink(field, value) {
+  const str = String(value);
+  return `<a href="#" class="tag-link" data-filter-key="${escapeHtml(field.key)}" data-filter-value="${escapeHtml(str)}">${escapeHtml(str)}</a>`;
+}
+
+// Generic: apply a plugin filter value and keep its <select> in sync, wherever it was triggered from.
+function setPluginFilter(key, value) {
+  state.filters[key] = value;
+  const select = document.querySelector(`#pluginFilters select[data-plugin-key="${CSS.escape(key)}"]`);
+  if (select) select.value = value;
+  render();
+}
+
 function renderAchievement(achievement) {
   const article = document.createElement("article");
   article.className = "achievement";
   const icon = achievement.icon || achievement.icon_gray || "";
   let tagsHtml = "";
   const meta = achievement.metadata || {};
-  for (const [key, value] of Object.entries(meta)) {
+  const pluginFields = state.dashboard?.plugin_fields || [];
+  // Only declared plugin fields become tags; plugins may stash other keys in metadata
+  // (e.g. as intermediate data for enrich()) without them leaking into the UI.
+  // Generic convention: a field marked "clickable" renders its value(s) as links
+  // (within the same single pill) that apply the matching plugin filter on click.
+  for (const field of pluginFields) {
+    const value = meta[field.key];
     if (value === null || value === undefined || value === "") continue;
-    if (key === "wiki_description") continue; // skip duplicate description
-    let tagHtml;
-    if (key === "source") {
-      const page = meta.source_page;
-      if (page) {
-        const url = "https://payday.fandom.com/wiki/" + encodeURIComponent(String(page).trim().replace(/ /g, "_"));
-        tagHtml = `<a class="tag" href="${escapeHtml(url)}" target="_blank" rel="noopener">Source: Payday Wiki</a>`;
-      } else {
-        tagHtml = `<span class="tag">${escapeHtml(labelize(key))}: ${escapeHtml(String(value))}</span>`;
-      }
-    } else {
-      tagHtml = `<span class="tag">${escapeHtml(labelize(key))}: ${escapeHtml(String(value))}</span>`;
-    }
-    tagsHtml += tagHtml;
+    const items = (Array.isArray(value) ? value : [value]).filter((item) => item !== null && item !== undefined && String(item) !== "");
+    if (!items.length) continue;
+    const valueHtml = field.clickable
+      ? items.map((item) => tagLink(field, item)).join(", ")
+      : escapeHtml(items.join(", "));
+    tagsHtml += `<span class="tag">${escapeHtml(field.label)}: ${valueHtml}</span>`;
   }
+  // Generic convention: any plugin can attach an external-source link via "source_label"
+  // (display text) and "source_url" (link target, optional).
+  if (meta.source_label) {
+    const url = meta.source_url;
+    tagsHtml += url
+      ? `<a class="tag" href="${escapeHtml(url)}" target="_blank" rel="noopener">Source: ${escapeHtml(String(meta.source_label))}</a>`
+      : `<span class="tag">Source: ${escapeHtml(String(meta.source_label))}</span>`;
+  }
+  const isPinned = state.pinned.has(achievement.api_name);
+  article.classList.toggle("pinned", isPinned);
+  article.title = isPinned ? "Click to unpin" : "Click to pin to top";
   article.innerHTML = `
     <img src="${escapeHtml(icon)}" alt="">
     <div>
@@ -398,6 +458,23 @@ function renderAchievement(achievement) {
         .join("")}
     </div>
   `;
+  article.querySelectorAll(".tag-link").forEach((link) => {
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setPluginFilter(link.dataset.filterKey, link.dataset.filterValue);
+    });
+  });
+  article.addEventListener("click", (event) => {
+    if (event.target.closest("a")) return;
+    if (state.pinned.has(achievement.api_name)) {
+      state.pinned.delete(achievement.api_name);
+    } else {
+      state.pinned.add(achievement.api_name);
+    }
+    syncUrl();
+    render();
+  });
   return article;
 }
 
@@ -461,10 +538,6 @@ function escapeHtml(value) {
   })[char]);
 }
 
-function labelize(key) {
-  return key.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
 let toastTimer = null;
 function toast(message, persistent = false) {
   const el = $("#toast");
@@ -480,6 +553,8 @@ $("#gameSelect").addEventListener("change", async (event) => {
   state.currentGameId = Number(event.target.value);
   state.filters = {};
   state.missingPlayers.clear();
+  state.pinned.clear();
+  syncUrl();
   await loadDashboard();
 });
 
@@ -498,7 +573,11 @@ $("#refreshPlayersBtn").addEventListener("click", async () => {
   }
 });
 
-$("#searchInput").addEventListener("input", render);
+let searchDebounceTimer = null;
+$("#searchInput").addEventListener("input", () => {
+  clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(render, 150);
+});
 $("#statusFilter").addEventListener("change", render);
 
 $("#missingPlayerFilter").addEventListener("click", () => $("#missingPlayerSearch").focus());
@@ -513,6 +592,11 @@ $("#missingPlayerSearch").addEventListener("blur", () => {
 });
 
 $("#missingPlayerSearch").addEventListener("input", renderPlayerFilter);
+
+$("#missingStrictToggle").addEventListener("change", (event) => {
+  state.missingStrict = event.target.checked;
+  render();
+});
 $("#adminToggle").addEventListener("click", () => $("#adminPanel").classList.add("open"));
 $("#adminClose").addEventListener("click", () => $("#adminPanel").classList.remove("open"));
 $("#saveAdminSecret").addEventListener("click", async () => {

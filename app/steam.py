@@ -101,3 +101,11 @@ def fetch_player_achievements(app_id: int, steam_id: str) -> list[dict[str, Any]
         raise SteamError("Steam player achievement response did not contain achievements.")
     return achievements
 
+
+def fetch_player_stats(app_id: int, steam_id: str) -> dict[str, Any]:
+    """Raw GetUserStatsForGame response (numeric stat counters, e.g. kill counts)."""
+    return _get_json(
+        "https://api.steampowered.com/ISteamUserStats/GetUserStatsForGame/v0002/",
+        {"key": _require_key(), "appid": app_id, "steamid": steam_id},
+    )
+

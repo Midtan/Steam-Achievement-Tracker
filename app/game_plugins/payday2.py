@@ -63,7 +63,7 @@ def _match_heists(text: str) -> list[str]:
 
 def fields() -> list[dict[str, str]]:
     return [
-        {"key": "heist", "label": "Heists"},
+        {"key": "heist", "label": "Heists", "clickable": True},
         {"key": "approach", "label": "Approach"},
         {"key": "difficulty", "label": "Difficulty"},
     ]
@@ -284,12 +284,16 @@ def _description_part(parts: list[str]) -> str:
     return named.get("3") or named.get("description") or (positional[0] if positional else "")
 
 
+def _wiki_url(page: str) -> str:
+    return "https://payday.fandom.com/wiki/" + urllib.parse.quote(page.strip().replace(" ", "_"))
+
+
 def _metadata_from_entry(entry: dict[str, str]) -> dict[str, Any]:
     description = entry["description"]
     clean = _strip_markup(description)
     metadata: dict[str, Any] = {
-        "source": "Payday Wiki",
-        "source_page": entry["source_page"],
+        "source_label": "Payday Wiki",
+        "source_url": _wiki_url(entry["source_page"]),
         "wiki_description": clean,
     }
     approach = _infer_approach(clean)
