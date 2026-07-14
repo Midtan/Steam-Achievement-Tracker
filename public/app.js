@@ -573,7 +573,11 @@ $("#refreshPlayersBtn").addEventListener("click", async () => {
   }
 });
 
-$("#searchInput").addEventListener("input", render);
+let searchDebounceTimer = null;
+$("#searchInput").addEventListener("input", () => {
+  clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(render, 150);
+});
 $("#statusFilter").addEventListener("change", render);
 
 $("#missingPlayerFilter").addEventListener("click", () => $("#missingPlayerSearch").focus());
