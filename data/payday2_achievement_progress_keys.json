@@ -67,7 +67,7 @@
   { "key": "gage5_8", "target": 25, "value_key": "gage5_8_stats" },
   { "key": "gage5_9", "target": 10, "value_key": "gage5_9_stats" },
   { "key": "gage5_10", "target": 200, "value_key": "gage5_10_stats" },
-  { "key": "grv_3", "target": 200, "value_key": "grv_3_stats" },
+  { "key": "grv_3", "target": 300, "value_key": "grv_3_stats" },
   { "key": "halloween_10", "target": 25, "value_key": "halloween_10_stats" },
   { "key": "halloween_4", "target": 50, "value_key": "halloween_4_stats" },
   { "key": "halloween_5", "target": 25, "value_key": "halloween_5_stats" },
